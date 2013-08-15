@@ -1,0 +1,1 @@
+/usr/local/share/npm/bin/nodeunit labjack_t7_upgrade_test.js
