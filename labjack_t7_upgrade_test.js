@@ -43,6 +43,9 @@ function MockDevice()
 	// Last set of directinos passed to this mock device.
 	var lastDirections = [];
 
+	var lastFrames = [];
+	var lastNumValues = [];
+
 	// Value to return on the next read call to this mock device.
 	var nextValue = null;
 
@@ -61,6 +64,45 @@ function MockDevice()
 		lastValue.push(values);
 		onSuccess();
 	};
+	//NumFrames: Total number of operations to perform 
+	//Addresses: array of addresses to be operated upon
+	//Writes: Directions of the operations
+	//numValues: How many times to iterate each operation
+	//values: what values to write for each write with dummy values inserted 
+	//		for reads
+	/*
+	if numFrames = 2
+	Addresses = [0,1000]//AIN0 & DAC0
+	Writes = [READ, WRITE]
+	numValues = [4, 2]
+	values: [dummy, dummy, dummy, dummy, 2.5, 2.5]
+
+	Total Request breaking down into read/write many...:
+	1. Read: AIN0
+	2. Read: AIN1
+	3. Read: AIN2
+	4. Read: AIN3
+	5. Write: DAC0, 2.5
+	6. Write: DAC1, 2.5
+	*/
+	this.rwMany = function (numFrames, addresses, directions, numValues,
+		values, onError, onSuccess)
+	{
+		lastFrames.push(numFrames);
+		lastAddress.push(addresses);
+		lastDirections.push(directions);
+		lastNumValues.push(numValues);
+		lastValue.push(values);
+		onSuccess(this.getNextValueToReturn());
+	}
+	
+	/*this.rwMany = function (addresses, directions, values, onError, onSuccess)
+	{
+		lastAddress.push(addresses);
+		lastDirections.push(directions);
+		lastValue.push(values);
+		onSuccess(this.getNextValueToReturn());
+	};*/
 
 	this.read = function (address, onError, onSuccess) {
 		lastAddress.push(address);
@@ -72,13 +114,7 @@ function MockDevice()
 		onSuccess(this.getNextValueToReturn());
 	};
 
-	this.rwMany = function (addresses, directions, values, onError, onSuccess)
-	{
-		lastAddress.push(addresses);
-		lastDirections.push(directions);
-		lastValue.push(values);
-		onSuccess(this.getNextValueToReturn());
-	};
+	
 
 	this.getNextValueToReturn = function()
 	{
@@ -112,6 +148,14 @@ function MockDevice()
 
 	this.getLastDirections = function () {
 		return lastDirections;
+	};
+
+	this.getLastNumValues = function () {
+		return lastNumValues;
+	};
+
+	this.getLastFrames = function () {
+		return lastFrames;
 	};
 
 	this.reset = function () {
@@ -343,8 +387,9 @@ module.exports = {
 
 	testReadFlash: function(test)
 	{
-		var length = 3;
-		var size = 2;
+		var writeSize = driver_const.T7_FLASH_BLOCK_WRITE_SIZE;
+		var length = writeSize*1.5;
+		var size = writeSize;
 		var paramAddress1 = 0;
 		var paramAddress2 = 8;
 		var readPtrAddress = driver_const.T7_MA_EXF_pREAD;
@@ -361,20 +406,10 @@ module.exports = {
 		var expectedAddresses = [
 			[
 				readPtrAddress,
-				readFlashAddress,
-				readFlashAddress,
-				readFlashAddress,
-				readFlashAddress,
-				readFlashAddress,
-				readFlashAddress,
-				readFlashAddress,
 				readFlashAddress
 			],
 			[
 				readPtrAddress,
-				readFlashAddress,
-				readFlashAddress,
-				readFlashAddress,
 				readFlashAddress
 			]
 		];
@@ -382,20 +417,10 @@ module.exports = {
 		var expectedDirections = [
 			[
 				driver_const.LJM_WRITE,
-				driver_const.LJM_READ,
-				driver_const.LJM_READ,
-				driver_const.LJM_READ,
-				driver_const.LJM_READ,
-				driver_const.LJM_READ,
-				driver_const.LJM_READ,
-				driver_const.LJM_READ,
 				driver_const.LJM_READ
 			],
 			[
 				driver_const.LJM_WRITE,
-				driver_const.LJM_READ,
-				driver_const.LJM_READ,
-				driver_const.LJM_READ,
 				driver_const.LJM_READ
 			]
 		];
@@ -425,10 +450,7 @@ module.exports = {
 		var intsPerPage = pageSize / numBytesPerInt;
 		var expectedIntsReturned = numPages * intsPerPage;
 		var expectedRWOps = expectedIntsReturned / sizePerOperation;
-		var expectedFirstAddr = driver_const.T7_EFAdd_ExtFirmwareImage;
-		var numIntsReadBeforeLast = (expectedRWOps - 1) * sizePerOperation;
-		var numBytesReadBeforeLast = numIntsReadBeforeLast * numBytesPerInt;
-		var expectedLastAddr = expectedFirstAddr + numBytesReadBeforeLast;
+		var expectedReadAddr = driver_const.T7_EFAdd_ExtFirmwareImage;
 
 		var createZeroArray = function (numZeros)
 		{
@@ -453,8 +475,8 @@ module.exports = {
 			var lastValues = testDevice.getLastValue();
 			test.equal(actualMemory.length, expectedIntsReturned);
 			test.equal(lastValues.length, expectedRWOps);
-			test.equal(lastValues[0][0], expectedFirstAddr);
-			test.equal(lastValues[expectedRWOps-1][0], expectedLastAddr);
+			test.equal(lastValues[0].length, 9); // 1 for ptr, 8 for data
+			test.equal(lastValues[0][0], expectedReadAddr);
 			test.done();
 		}, function(err) { test.ok(false, err); test.done(); });
 	},
@@ -469,10 +491,7 @@ module.exports = {
 		var intsPerPage = pageSize / numBytesPerInt;
 		var expectedIntsReturned = numPages * intsPerPage;
 		var expectedRWOps = expectedIntsReturned / sizePerOperation;
-		var expectedFirstAddr = driver_const.T7_EFAdd_ExtFirmwareImgInfo;
-		var numIntsReadBeforeLast = (expectedRWOps - 1) * sizePerOperation;
-		var numBytesReadBeforeLast = numIntsReadBeforeLast * numBytesPerInt;
-		var expectedLastAddr = expectedFirstAddr + numBytesReadBeforeLast;
+		var expectedReadAddr = driver_const.T7_EFAdd_ExtFirmwareImgInfo;
 
 		var createZeroArray = function (numZeros)
 		{
@@ -498,8 +517,8 @@ module.exports = {
 			var lastValues = testDevice.getLastValue();
 			test.equal(actualMemory.length, expectedIntsReturned);
 			test.equal(lastValues.length, expectedRWOps);
-			test.equal(lastValues[0][0], expectedFirstAddr);
-			test.equal(lastValues[expectedRWOps-1][0], expectedLastAddr);
+			test.equal(lastValues[0].length, 9); // 1 for ptr, 8 for data
+			test.equal(lastValues[0][0], expectedReadAddr);
 			test.done();
 		}, function(err) { test.ok(false, err); test.done(); });
 	},
@@ -533,8 +552,9 @@ module.exports = {
 
 	testWriteFlash: function(test)
 	{
-		var length = 3;
-		var size = 2;
+		var writeSize = driver_const.T7_FLASH_BLOCK_WRITE_SIZE;
+		var length = writeSize*1.5;
+		var size = writeSize;
 		var paramAddress1 = 0;
 		var paramAddress2 = 8;
 		var key = 5;
@@ -572,24 +592,34 @@ module.exports = {
 			[
 				keyAddress,
 				writePtrAddress,
-				writeFlashAddress,
-				writeFlashAddress,
-				writeFlashAddress,
-				writeFlashAddress,
-				writeFlashAddress,
-				writeFlashAddress,
-				writeFlashAddress,
 				writeFlashAddress
 			],
 			[
 				keyAddress,
 				writePtrAddress,
-				writeFlashAddress,
-				writeFlashAddress,
-				writeFlashAddress,
 				writeFlashAddress
 			]
 		];
+
+		var expectedDirections = [
+			[
+				driver_const.LJM_WRITE,
+				driver_const.LJM_WRITE,
+				driver_const.LJM_WRITE
+			],
+			[
+				driver_const.LJM_WRITE,
+				driver_const.LJM_WRITE,
+				driver_const.LJM_WRITE
+			]
+		];
+
+		var expectedNumFrames = [3, 3];
+
+		var expectedNumValues = [
+			[1, 1, writeSize],
+			[1, 1, writeSize*0.5]
+		];	
 
 		var testDevice = new MockDevice();
 		var testBundle = new DeviceFirmwareBundle();
@@ -605,6 +635,10 @@ module.exports = {
 		).then(function () {
 			test.deepEqual(testDevice.getLastAddress(), expectedAddresses);
 			test.deepEqual(testDevice.getLastValue(), expectedValues);
+			test.deepEqual(testDevice.getLastDirections(), expectedDirections);
+			test.deepEqual(testDevice.getLastNumValues(),
+				expectedNumValues);
+			test.deepEqual(testDevice.getLastFrames(), expectedNumFrames);
 			test.done();
 		}, function(err) { test.ok(false, err); test.done(); });
 	},
@@ -620,10 +654,7 @@ module.exports = {
 		var intsPerPage = pageSize / numBytesPerInt;
 		var expectedIntsWritten = numPages * intsPerPage;
 		var expectedRWOps = expectedIntsWritten / sizePerOperation;
-		var expectedFirstAddr = driver_const.T7_EFAdd_ExtFirmwareImage;
-		var numIntsWriteBeforeLast = (expectedRWOps - 1) * sizePerOperation;
-		var numBytesWriteBeforeLast = numIntsWriteBeforeLast * numBytesPerInt;
-		var expectedLastAddr = expectedFirstAddr + numBytesWriteBeforeLast;
+		var expectedWriteAddr = driver_const.T7_EFAdd_ExtFirmwareImage;
 
 		var createZeroArray = function (numZeros)
 		{
@@ -647,8 +678,8 @@ module.exports = {
 		labjack_t7_upgrade.writeImage(testBundle).then(function () {
 			var lastValues = testDevice.getLastValue();
 			test.equal(lastValues.length, expectedRWOps);
-			test.equal(lastValues[0][1], expectedFirstAddr);
-			test.equal(lastValues[expectedRWOps-1][1], expectedLastAddr);
+			test.equal(lastValues[0][1], expectedWriteAddr);
+			test.equal(lastValues[0].length, 10); // 1 for ptr, 1 key, 8 data
 			test.done();
 		}, function(err) { test.ok(false, err); test.done(); });
 	},
@@ -664,10 +695,7 @@ module.exports = {
 		var intsPerPage = pageSize / numBytesPerInt;
 		var expectedIntsWritten = numPages * intsPerPage;
 		var expectedRWOps = expectedIntsWritten / sizePerOperation;
-		var expectedFirstAddr = driver_const.T7_EFAdd_ExtFirmwareImgInfo;
-		var numIntsWriteBeforeLast = (expectedRWOps - 1) * sizePerOperation;
-		var numBytesWriteBeforeLast = numIntsWriteBeforeLast * numBytesPerInt;
-		var expectedLastAddr = expectedFirstAddr + numBytesWriteBeforeLast;
+		var expectedWriteAddr = driver_const.T7_EFAdd_ExtFirmwareImgInfo;
 
 		var createZeroArray = function (numZeros)
 		{
@@ -691,8 +719,8 @@ module.exports = {
 		labjack_t7_upgrade.writeImageInformation(testBundle).then(function () {
 			var lastValues = testDevice.getLastValue();
 			test.equal(lastValues.length, expectedRWOps);
-			test.equal(lastValues[0][1], expectedFirstAddr);
-			test.equal(lastValues[expectedRWOps-1][1], expectedLastAddr);
+			test.equal(lastValues[0][1], expectedWriteAddr);
+			test.equal(lastValues[0].length, 10); // 1 for ptr, 1 key, 8 data
 			test.done();
 		}, function (err) { test.ok(false, err); test.done(); });
 	},

@@ -291,8 +291,8 @@ exports.eraseImageInformation = function(bundle)
 };
 
 
-var readWriteOperation = function (bundle, startAddress, lengthInts, sizeInts,
-	ptrAddress, readFlashAddress, deviceFunction, key)
+var createFlashOperation = function (bundle, startAddress, lengthInts, sizeInts,
+	ptrAddress, flashAddress, isReadOp, key)
 {
 	var deferred = q.defer();
 	var device = bundle.getDevice();
@@ -306,26 +306,46 @@ var readWriteOperation = function (bundle, startAddress, lengthInts, sizeInts,
 			var addresses = [];
 			var values = [];
 			var directions = [];
+			var numFrames;
+			var numValues;
 
-			if (key !== undefined) {
+			// Flash memory pointer
+			directions.push(driver_const.LJM_WRITE);
+
+			// Key
+			if (key === undefined) {
+				numFrames = 2;
+				numValues = [1];
+			} else {
+				// Write for key
+				directions.push(driver_const.LJM_WRITE);
 				addresses.push(driver_const.T7_MA_EXF_KEY);
 				values.push(key);
+				numFrames = 3;
+				numValues = [1, 1];
 			}
+
+			if (isReadOp)
+				directions.push(driver_const.LJM_READ);
+			else
+				directions.push(driver_const.LJM_WRITE);
 
 			addresses.push(ptrAddress);
 			values.push(address);
-			directions.push(driver_const.LJM_WRITE);
+			addresses.push(flashAddress);
 
 			for(var i=0; i<innerSize; i++)
 			{
-				addresses.push(readFlashAddress);
 				values.push(null);
-				directions.push(driver_const.LJM_READ);
 			}
 
-			deviceFunction(
+			numValues.push(innerSize);
+
+			device.rwMany(
+				numFrames,
 				addresses,
 				directions,
+				numValues,
 				values,
 				innerDeferred.reject,
 				function (newResults) { 
@@ -339,8 +359,8 @@ var readWriteOperation = function (bundle, startAddress, lengthInts, sizeInts,
 	};
 
 	var executeOperations = [];
-	var size = sizeInts * 4;
-	var length = lengthInts * 4;
+	var size = sizeInts;
+	var length = lengthInts;
 	var numIterations = Math.floor(length / size);
 	var remainder = length % size;
 	var shouldAugment = remainder > 0;
@@ -390,22 +410,14 @@ exports.readFlash = function(bundle, startAddress, length, size)
 	var readPtrAddress = driver_const.T7_MA_EXF_pREAD;
 	var readFlashAddress = driver_const.T7_MA_EXF_READ;
 	var device = bundle.getDevice();
-	return readWriteOperation(
+	return createFlashOperation(
 		bundle,
 		startAddress,
 		length,
 		size,
 		readPtrAddress,
 		readFlashAddress,
-		function (addresses, directions, values, onError, onSuccess) {
-			device.rwMany(
-				addresses,
-				directions,
-				values,
-				onError,
-				onSuccess
-			);
-		}
+		true
 	);
 }
 
@@ -520,21 +532,14 @@ exports.writeFlash = function(bundle, startAddress, length, size, key)
 	var readPtrAddress = driver_const.T7_MA_EXF_pWRITE;
 	var readFlashAddress = driver_const.T7_MA_EXF_WRITE;
 	var device = bundle.getDevice();
-	return readWriteOperation(
+	return createFlashOperation(
 		bundle,
 		startAddress,
 		length,
 		size,
 		readPtrAddress,
 		readFlashAddress,
-		function (addresses, directions, values, onError, onSuccess) {
-			device.writeMany(
-				addresses,
-				values,
-				onError,
-				onSuccess
-			);
-		},
+		false,
 		key
 	);
 }
