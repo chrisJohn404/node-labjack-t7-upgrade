@@ -85,10 +85,10 @@ function MockDevice()
 	5. Write: DAC0, 2.5
 	6. Write: DAC1, 2.5
 	*/
-	this.rwMany = function (numFrames, addresses, directions, numValues,
-		values, onError, onSuccess)
+	this.rwMany = function (addresses, directions, numValues, values, onError,
+		onSuccess)
 	{
-		lastFrames.push(numFrames);
+		lastFrames.push(addresses.length);
 		lastAddress.push(addresses);
 		lastDirections.push(directions);
 		lastNumValues.push(numValues);
@@ -113,8 +113,6 @@ function MockDevice()
 		lastAddress.push(address);
 		onSuccess(this.getNextValueToReturn());
 	};
-
-	
 
 	this.getNextValueToReturn = function()
 	{
@@ -178,7 +176,7 @@ module.exports = {
 
 	testReadFirmwareFile: function(test)
 	{
-		var testFirmwareFileSrc = 'T7_firmware_100000_200000.bin'
+		var testFirmwareFileSrc = 'T7firmware_100000_200000.bin'
 		var testFileBuffer = new Buffer(driver_const.T7_IMG_HEADER_LENGTH);
 		testFileBuffer.writeUInt32BE(123, driver_const.HEADER_CODE);
 		testFileBuffer.fill(0, 4);
